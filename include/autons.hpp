@@ -12,7 +12,8 @@ void swing_example();
 void combining_movements();
 void interfered_example();
 
-void default_constants();
+void turn_90_constants();
+void acute_turn_constants();
 void one_mogo_constants();
 void two_mogo_constants();
 void exit_condition_defaults();

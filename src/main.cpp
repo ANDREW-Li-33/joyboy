@@ -1,6 +1,7 @@
 #include "main.h"
 #include "EZ-Template/auton.hpp"
 #include "EZ-Template/util.hpp"
+#include "autons.hpp"
 #include "display/lv_core/lv_obj.h"
 #include "display/lv_core/lv_style.h"
 #include "display/lv_fonts/lv_font_builtin.h"
@@ -25,21 +26,21 @@
 #include "pros/rtos.hpp"
 #include "pros/vision.hpp"
 #include <complex>
+#include <cstdint>
 #include <string>
 #include <map>
 #include <utility>
 
 
-
-pros::Motor cata (11, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor intake (12, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor driveFR (13, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor driveMR (15, pros::E_MOTOR_GEARSET_18, true, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor driveBR (14, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor driveFL (16, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor driveML (18, pros::E_MOTOR_GEARSET_18, true, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor driveBL (17, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
-
+// MOTOR / SENSOR INITIALIZATION 
+pros::Motor cata (2, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor intake (10, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor driveFR (19, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor driveMR (18, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor driveBR (20, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor driveFL (14, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor driveML (15, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor driveBL (13, pros::E_MOTOR_GEARSET_18, false, pros::E_MOTOR_ENCODER_DEGREES);
 
 pros::ADIDigitalIn cata_limit ('A');
 
@@ -48,15 +49,17 @@ pros::Rotation rotation_right(19);
 
 pros::Optical optical(16);
 
-pros::Imu inertial(10);
+pros::Imu inertial(16);
 
 pros::ADIDigitalOut expansion_solenoid('B');
-
-
+pros::ADIDigitalOut anti_boost_solenoid('C');
+pros::ADIDigitalOut band_release('D');
 
 // pros::Vision vision(13);
 
 pros::Controller master (pros::E_CONTROLLER_MASTER);
+
+
 
 
 std::map<std::string, pros::Motor> motorMap;
@@ -75,8 +78,6 @@ static  lv_res_t btn_rel_action(lv_obj_t * btn)
 
     return LV_RES_OK;
 }
-
-
 
 
 static void disconnect_detection(void* param) {
@@ -113,52 +114,33 @@ static void disconnect_detection(void* param) {
 bool cata_task_on; 
 bool manualCataFlag = true;
 int cata_limit_counter = 0;
-int cata_button_pressed_counter = 0;
 bool intake_go = true;
 
 // 1 is pressed, 0 is open
  void cata_task(void* param) {
-			// cata.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
 
   while (true) {
 
 	while (cata_task_on) {
 		
 		if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R2) && master.get_digital(pros::E_CONTROLLER_DIGITAL_R1) && manualCataFlag) {
-			cata = 127;
-      intake = -127;			
+			cata = 110;
+      intake = -110;			
 		}  else if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1)) {
 
-
-      cata_button_pressed_counter++;
-      cata.tare_position();
-
-
-      // with rotatioiins
-      // while (cata.get_position() < 50) {
-      //   cata = 127;
-      //   intake = -127;
-      // }
-
-      // cata = 0;
-      // intake = 0;
-
-      // pros::delay(200);
-
-      // while (cata.get_position() < 1902.5) {
-      //   cata = 127;
-      //   intake = -127;
-      // }
-
-
-
-
 			manualCataFlag = false;
+
+      while (cata_limit.get_value() == 0) {
+				cata = 120;
+        intake = -120;	
+        intake_go = false;
+				pros::delay(10);
+			}
 				
 			// launch, limit will be pressed at start
 			while (cata_limit.get_value() == 1) {
-							cata = 127;
-      intake = -127;		 
+				cata = 100;
+        intake = -100;		 
         intake_go = false;
 				pros::delay(20);
 			}
@@ -166,13 +148,22 @@ bool intake_go = true;
 			cata = 0;
       intake = 0;
 
-			pros::delay(100);
-			
-			
+			pros::delay(750);
+
+      cata.tare_position();			
+
 			// wind back and reset, limit will be open at start
 			while (cata_limit.get_value() == 0) {
-							cata = 127;
-           intake = -127;		
+
+        if (cata.get_position() < 300) {
+          cata = 105;
+          intake = -105;	
+        }
+        if (cata.get_position() > 300) {
+         cata = 65;
+         intake = -65;
+        }
+
         intake_go = false;
 				pros::delay(10);
 			}
@@ -209,44 +200,38 @@ bool intake_go = true;
 
 
 
- bool cata_auto_reset = false;
+bool cata_auto_reset = false;
 bool shooting_cata = false;
 bool reset_cata = false;
 
  void cata_task_auto(void* param) {
   while (true) {
 	while (cata_auto_reset) {
+          cata = (90);
+        intake = (-90);	
+    pros::delay(1000);
 
-			if (reset_cata && cata_limit.get_value() == 0) {
-        cata = 127;
-        intake = -127;  
-        pros::delay(20);
+		while (cata_limit.get_value() == 0) {
+              cata.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+        intake.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+      cata.tare_position();
+        cata = (80);
+        intake = (-80);	
+      pros::delay(100);
 
-			} else if (shooting_cata) {
-                while (cata_limit.get_value() == 1) {
-                    cata = 127;
-                    intake = -127;
-                    pros::delay(20);
-                }
-
-                pros::delay(200);
-                
-                
-                // wind back and reset, limit will be open at start
-                while (cata_limit.get_value() == 0) {
-                    cata = 127;
-                    intake = -127;
-                    pros::delay(10);
-                }
-
-                cata = 0;
-                intake = 0;
-            } else {
-                cata = 0;
-                intake = 0;
-            }
+    }
 
 
+			
+
+    while (cata_limit.get_value() == 1) {
+        cata.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+        intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+
+        cata.move_voltage(0);
+        intake.move_voltage(0);
+		pros::delay(20);
+    }
 
 		pros::delay(20);
 
@@ -259,6 +244,54 @@ bool reset_cata = false;
  }
 
 
+
+
+/*
+else if (shooting_cata) {
+
+
+        
+        if (cata_limit.get_value() == 1) {
+          
+          cata = 120;
+          intake = -120;
+          pros::delay(20);
+        } else {
+        
+                cata = 0;
+                intake = 0;
+        }
+
+                pros::delay(100);
+                
+      cata.tare_position();
+                
+      //           // wind back and reset, limit will be open at start
+      //           while (cata_limit.get_value() == 0) {
+      // // if (cata.get_position() < 200) {
+      // //   cata = 127;
+      // //   intake = -127;	
+      // // }
+      // // if (cata.get_position() > 200) {
+      // //   cata = 55;
+      // //   intake = -55;
+      // // }
+      //         cata = 85;
+      //   intake = -85;
+      // pros::delay(10);
+      //           }
+
+                cata = 0;
+                intake = 0;
+            } else {
+                cata = 0;
+                intake = 0;
+            }
+
+
+*/
+
+
 /////
 // For instalattion, upgrading, documentations and tutorials, check out website!
 // https://ez-robotics.github.io/EZ-Template/
@@ -269,14 +302,14 @@ bool reset_cata = false;
 Drive chassis (
   // Left Chassis Ports (negative port will reverse it!)
   //   the first port is the sensored port (when trackers are not used!)
-  {-16, 18, -17}
+  {-14, -15, -13}
 
   // Right Chassis Ports (negative port will reverse it!)
   //   the first port is the sensored port (when trackers are not used!)
-  ,{13, -15, 14}
+  ,{19, 18, 20}
 
   // IMU Port
-  ,10
+  ,16
 
   // Wheel Diameter (Remember, 4" wheels are actually 4.125!)
   //    (or tracking wheel diameter)
@@ -303,14 +336,204 @@ Drive chassis (
   // ,{-3, -4} // 3 wire encoder
   // ,-19 // Rotation sensor
   
-
-  // Uncomment if tracking wheels are plugged into a 3 wire expander
-  // 3 Wire Port Expander Smart Port
-  // ,1
 );
 
 
 
+void PIDturnright(double targetAngle, double tolerance, double kP_turn, 
+double kI_turn, double kD_turn, double integral_cap, double timer) {
+
+	// P variables
+	double currentAngle = inertial.get_yaw();
+
+	// function found in misc.cpp
+	// double error = shortestAngle(targetAngle, currentAngle);
+	double error = targetAngle - currentAngle;
+
+	// I variables
+	double integral =  0;
+	const double dT = 0.20;
+
+	// D variables
+	double prevError = 0;
+	double derivative;
+
+	// starting timer
+	double startTime = pros::millis();
+	double currentTime = pros::millis();
+	double deltaTime = currentTime - startTime;
+
+
+	while (fabs(error) > tolerance && deltaTime < timer) {
+        deltaTime = pros::millis() - startTime;
+		currentAngle = inertial.get_yaw();
+		error = targetAngle - currentAngle;
+
+
+		int error_sign = error > 0 ? 1 : -1;
+
+		integral += error * dT;
+
+		if (error == 0) {
+			integral = 0;
+		} 
+		if (integral > integral_cap) {
+			integral = integral_cap;
+		}
+
+		derivative = (error - prevError)/dT;
+		prevError = error;
+
+		double power = (error*kP_turn) + (integral*kI_turn) + (derivative*kD_turn);
+		chassis.set_tank(error_sign * power, -(error_sign * power));
+
+		pros::delay(20);
+
+	}
+
+	chassis.set_tank(0,0);
+
+}
+
+
+
+void PIDturnleft(double targetAngle, double tolerance, double kP_turn, 
+double kI_turn, double kD_turn, double integral_cap, double timer) {
+
+	// P variables
+	double currentAngle = inertial.get_yaw();
+
+	// function found in misc.cpp
+	// double error = shortestAngle(targetAngle, currentAngle);
+	double error = targetAngle - currentAngle;
+
+	// I variables
+	double integral =  0;
+	const double dT = 0.20;
+
+	// D variables
+	double prevError = 0;
+	double derivative;
+
+	// starting timer
+	double startTime = pros::millis();
+	double currentTime = pros::millis();
+	double deltaTime = currentTime - startTime;
+
+
+	while (fabs(error) > tolerance  && deltaTime < timer) {
+        deltaTime = pros::millis() - startTime;
+		currentAngle = inertial.get_yaw();
+		// error = shortestAngle(targetAngle, currentAngle);
+		error = targetAngle - currentAngle;
+
+
+		int error_sign = error > 0 ? 1 : -1;
+
+		integral += error * dT;
+
+		if (error == 0 || currentAngle > targetAngle) {
+			integral = 0;
+		} 
+		if (integral > integral_cap) {
+			integral = integral_cap;
+		}
+
+		derivative = (error - prevError)/dT;
+		prevError = error;
+
+		double power = (error*kP_turn) + (integral*kI_turn) + (derivative*kD_turn);
+		chassis.set_tank(error_sign * -power, (error_sign * power));
+
+		pros::delay(20);
+
+	}
+
+	chassis.set_tank(0,0);
+
+}
+
+const double inches_to_degrees = 1/(((3.25 * M_PI) / 360) * 1.5);
+
+void PIDlinear(double target,double tolerance, double kP_mag, double kD_mag, 
+ double integral_cap, double slew, double degrees, double kP_direction, double timer) {
+
+
+  driveFL.tare_position();
+  driveML.tare_position();
+  driveBL.tare_position();
+
+  driveFR.tare_position();
+  driveMR.tare_position();
+  driveBR.tare_position();
+
+
+
+
+
+    target = target * inches_to_degrees;
+
+	// P variables
+	double current = (driveFL.get_position() + driveML.get_position() + driveBL.get_position() 
+                        + driveFR.get_position() + driveMR.get_position() + driveBR.get_position())/6;
+
+	double error = target - current;
+
+const double  dT = 0.2;
+
+	// D variables
+	double prevError = 0;
+	double derivative;
+
+	// starting timer
+	double startTime = pros::millis();
+	double currentTime = pros::millis();
+	double deltaTime = currentTime - startTime;
+
+	double voltCap = 0;
+	int sign;
+
+	while ((fabs(error) > tolerance * inches_to_degrees) && deltaTime < timer) {
+
+		currentTime = pros::millis();
+		deltaTime = currentTime - startTime;
+
+
+		// Proortional
+		current = ((driveFL.get_position() + driveML.get_position() + driveBL.get_position() 
+                        + driveFR.get_position() + driveMR.get_position() + driveBR.get_position())/6);
+		error = target - current;
+		sign = (error > 0) - (error < 0); // determine sign
+
+
+		
+		// Derivative
+		derivative = (error - prevError)/dT;
+		prevError = error;
+
+		// final power outputs
+		double power =  (error*kP_mag) + (derivative*kD_mag);
+
+		voltCap += slew; 
+		if(voltCap > 100) {
+			voltCap = 100; 
+		}
+		if(fabs(power) > voltCap) { //limit the voltage
+			power = voltCap * sign;
+		}
+chassis.set_mode(ez::DISABLE);
+
+    	double degrees_error = (inertial.get_yaw()) - degrees;
+		double turn_power = degrees_error * kP_direction;
+		chassis.set_tank(power - turn_power, power + turn_power);
+
+		pros::delay(20);
+
+	}
+chassis.set_mode(ez::DISABLE);
+	chassis.set_tank(0, 0);
+
+}
 
 
 void Drive::initialize(bool imu) {
@@ -319,11 +542,11 @@ void Drive::initialize(bool imu) {
 }
 
 
-const int DRIVE_SPEED = 110; // This is 110/127 (around 87% of max speed).  We don't suggest making this 127.
+const int DRIVE_SPEED = 100; // This is 110/127 (around 87% of max speed).  We don't suggest making this 127.
                              // If this is 127 and the robot tries to heading correct, it's only correcting by
                              // making one side slower.  When this is 87%, it's correcting by making one side
                              // faster and one side slower, giving better heading correction.
-const int TURN_SPEED  = 90;
+const int TURN_SPEED  = 80;
 const int SWING_SPEED = 90;
 
 
@@ -333,429 +556,1258 @@ const int SWING_SPEED = 90;
 
   pros::Task auto_reset_task(cata_task_auto, (void*)"PROS", TASK_PRIORITY_DEFAULT, TASK_STACK_DEPTH_DEFAULT,"reset task auto");
 
+
+
+
+void do_nothing() {
+  //   chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(90, TURN_SPEED);
+  // chassis.wait_drive();
+}
+
+
+
+
+void score_roller_skills() {
+  intake = 127;
+  cata  = -127;
+  chassis.set_mode(ez::DISABLE);
+  
+  chassis.set_tank(-25, -25);
+  pros::delay(400);
+  chassis.set_tank(0, 0);
+
+  intake = 0;
+  cata  = 0;
+  pros::delay(50);
+}
+
+void score_roller_match() {
+  intake = 127;
+  cata  = -127;
+  chassis.set_mode(ez::DISABLE);
+  
+  chassis.set_tank(-25, -25);
+  pros::delay(150);
+  chassis.set_tank(0, 0);
+
+  intake = 0;
+  cata  = 0;
+  pros::delay(50);
+}
+
+
+void skills_shoot() {
+  cata = 120;
+  intake = -120;
+  pros::delay(200);
+    cata = 0;
+  intake = 0;
+  pros::delay(200);
+  cata.tare_position();
+  while (cata_limit.get_value() == false) {
+        if (cata.get_position() < 300) {
+          cata = 127;
+          intake = -127;	
+        }
+        if (cata.get_position() > 300) {
+         cata = 65;
+         intake = -65;
+        }
+  }
+  cata = 0;
+  intake = 0;
+}
+
 void skills() {
 
-  cata_auto_reset = false;
-  shooting_cata  = false;
-  reset_cata = false;
-
-  cata.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+  auto_reset_task.remove();
+  // start at left side roller
 
 
+  // get 1st roller
+  score_roller_skills();
 
-
-  // first 3 match loads
-
-  pros::delay(750);
-
-    chassis.set_swing_pid(ez::LEFT_SWING, 90, SWING_SPEED);
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(5, DRIVE_SPEED);
   chassis.wait_drive();
 
-  chassis.set_drive_pid(2, DRIVE_SPEED);
+  // turn to 3rd disc
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-45, TURN_SPEED);
   chassis.wait_drive();
 
-  cata_auto_reset = true;
-  shooting_cata = true;
-  pros::delay(500); // shoot here
-  shooting_cata = false;
-  reset_cata = true;
-
-    chassis.set_drive_pid(-2.5, DRIVE_SPEED);
-  chassis.wait_drive();
-
-      chassis.set_swing_pid(ez::LEFT_SWING, 0, SWING_SPEED);
-  chassis.wait_drive();
-
-
-  chassis.set_drive_pid(-6, DRIVE_SPEED);
-  chassis.wait_drive();
-
-
-
-
-  // next 3 match  loads
-  pros::delay(2500);
-  reset_cata = false;
-
-     chassis.set_swing_pid(ez::LEFT_SWING, 90, SWING_SPEED);
-  chassis.wait_drive();
-  
-
-  chassis.set_drive_pid(3, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  cata_auto_reset = true;
-  shooting_cata = true;
-  pros::delay(500); // shoot here
-  shooting_cata = false;
-  reset_cata = true;
-
-      chassis.set_drive_pid(-2.5, DRIVE_SPEED);
-  chassis.wait_drive();
-
-        chassis.set_swing_pid(ez::LEFT_SWING, 0, SWING_SPEED);
-  chassis.wait_drive();
-
-
-  chassis.set_drive_pid(-6, DRIVE_SPEED);
-  chassis.wait_drive();
-
-
-
-
-  // next 3 match loads
-  pros::delay(2000);
-  reset_cata = false;
-
-     chassis.set_swing_pid(ez::LEFT_SWING, 85, SWING_SPEED);
-  chassis.wait_drive();
-
-  chassis.set_drive_pid(2, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  cata_auto_reset = true;
-  shooting_cata = true;
-  pros::delay(500); // shoot here
-  shooting_cata = false;
-  reset_cata = true;
-
-
-  // turn to next few
-  chassis.set_turn_pid(-40, TURN_SPEED);
-  chassis.wait_drive();
-
-
-
-  // go fowards, intake next 3
-    chassis.set_drive_pid(15, DRIVE_SPEED);
-  chassis.wait_drive();
-  pros::delay(500);
-  reset_cata = false;
-  cata_auto_reset = false;
-  // turn intake on
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+  // forwards and intake 3rd disc 
   intake = 127;
   cata  = -127;
 
-chassis.set_mode(ez::DISABLE);
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(25, 90, true);
+  chassis.wait_drive();
 
-  chassis.set_tank(20, 20);
-  pros::delay(3000);
-  chassis.set_tank(0, 0);
-  pros::delay(500);
+  // turn to 2nd roller
+  turn_90_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(90, TURN_SPEED);
+  chassis.wait_drive();
 
-
-   intake = 0;
+  intake = 0;
   cata  = 0;
 
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+  // backwards towards roller
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-5, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  // get 2nd roller
+  score_roller_skills();
+
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(4, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  // REMINDER 5 SECOND MARK
+
+  // turn to goal 
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(2, TURN_SPEED);
+  chassis.wait_drive();
+
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(40, 110, true);
+  chassis.wait_drive();
+
+  // shoot
+  skills_shoot();
+
+  // backwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-40, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // turn to 4/5/6 disc (separate)
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(42, TURN_SPEED);
+  chassis.wait_drive();
+
+  reset_cata = false;
+  cata_auto_reset = false;
+
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(21, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // forwards and intake 4/5/6 (separatetd)
+  intake = 127;
+  cata  = -127;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(41, 50, true);
+  chassis.wait_drive();
+
+  // REMINDER 10 SECOND MARK 
 
   // turn to goal
   chassis.set_mode(ez::TURN);
-  chassis.set_turn_pid(110, TURN_SPEED);
+  chassis.set_turn_pid(-45, TURN_SPEED);
   chassis.wait_drive();
 
+  intake = 0;
+  cata  = 0;
+
+  // forwards to low goal corner (*bg)
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(6, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  chassis.set_mode(ez::DISABLE);
+  chassis.set_tank(10, 10);
+  pros::delay(300);
+  chassis.set_tank(0, 0);
+
+  // shoot
+skills_shoot();
+
+  // backwards a little (*bg)
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-9, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // turn to 7/8/9 (stack)
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(40, TURN_SPEED);
+  chassis.wait_drive();
+
+  reset_cata = false;
+  cata_auto_reset = false;
+
+  // REMINDER 15 SECOND MARK
+
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(24, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // forwards and intake 7/8/9 (stack)
+  intake = 127;
+  cata  = -127;
 
   chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(27, DRIVE_SPEED);
+  chassis.set_drive_pid(30, 65);
   chassis.wait_drive();
 
-  cata_auto_reset = true;
-  shooting_cata = true;
-  pros::delay(500); // shoot here
-  shooting_cata = false;
-  reset_cata = true;
+  // turn to goal
+  turn_90_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-90, TURN_SPEED);
+  chassis.wait_drive();
 
-  pros::delay(1000); // shoot here
+  intake = 0;
+  cata  = 0;
 
+  // forwards to goal
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(35, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // shoot
+  skills_shoot();
+
+  // REMINDER 20 SECOND MARK
+
+  // backwards to 3rd roller
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-32, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // swing turn into 3rd roller
+  chassis.set_mode(ez::SWING);
+  chassis.set_swing_pid(ez::LEFT_SWING, -180, SWING_SPEED);
+  chassis.wait_drive();
+
+  reset_cata = false;
+  cata_auto_reset = false;
+
+  // backwards 
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-6, 90);
+  chassis.wait_drive();
+
+  // get 3rd roller
+  score_roller_skills();
+
+  // forwards to 10/11/12 (stack)
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(14, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // turn to avoid hitting 13
+  chassis.set_mode(ez::DISABLE);
+  chassis.set_tank(-60, 60);
+  pros::delay(175);
+  chassis.set_tank(0, 0);
+  pros::delay(150);
+
+  // // REMINDER 25 SECOND MARK
+
+  // forwards and intake 10/11/12 (stack)
+  intake = 127;
+  cata  = -127;
 
   chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-17, DRIVE_SPEED);
+  chassis.set_drive_pid(35, 40, false, false);
   chassis.wait_drive();
 
+  // turn to goal
+  // turn to avoid hitting 13
+  chassis.set_mode(ez::DISABLE);
+  chassis.set_tank(50, -50);
+  pros::delay(175);
+  chassis.set_tank(0, 0);
+  pros::delay(150);
 
+  intake = 0;
+  cata  = 0;
+
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(21, DRIVE_SPEED, true, false);
+  chassis.wait_drive();
+
+  // shoot
+  skills_shoot();
+
+
+  // backwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-38, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // turn to roller
+  turn_90_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-90, TURN_SPEED);
+  chassis.wait_drive();
+
+  reset_cata = false;
+  cata_auto_reset = false;
+
+  // REMINDER 30 SECOOND MARK
+
+  // backwards to 4th roller 
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-12, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // get 4th roller
+  score_roller_skills();
+
+  // forwards 
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(7.5, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // turn to 13/14/15 (separated)
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-135, TURN_SPEED);
+  chassis.wait_drive();  
+
+  // forwards and intake 13/14/15 (separated)
+  intake = 127;
+  cata  = -127;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(55, 65, true);
+  chassis.wait_drive();
+
+  intake = 0;
+  cata  = 0;
+
+  // turn to goal 
+  turn_90_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(135, TURN_SPEED);
+  chassis.wait_drive();
+
+  // REMINDER 35 SECOND MARK
+
+  // forwards to low goal corner (*rg)
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(6.5, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  chassis.set_mode(ez::DISABLE);
+  chassis.set_tank(10, 10);
+  pros::delay(300);
+  chassis.set_tank(0, 0);
+  
+  // shoot
+  skills_shoot();
+
+  // backwards (*rg)
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-8, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // turn to 16/17/18 (stack)
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-135, TURN_SPEED);
+  chassis.wait_drive();
+
+  reset_cata = false;
+  cata_auto_reset = false;
+
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(24, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // forwards and intake 16/17/18 (stack)
+  intake = 127;
+  cata  = -127;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(32, 40);
+  chassis.wait_drive();
+
+  // REMINDER 40 SECOND MARK
+
+  // turn to goal
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(90, TURN_SPEED);
+  chassis.wait_drive();
+
+  intake = 0;
+  cata  = 0;
+
+  // forwards to goal
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(37, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // shoot
+  skills_shoot();
+
+
+  // backwards to 19/20/21 (stack)
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-32, 110);
+  chassis.wait_drive();
+
+  // turn to 19/20/21 stack
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-25, TURN_SPEED);
+  chassis.wait_drive();
+
+  reset_cata = false;
+  cata_auto_reset = false;
+
+  pros::delay(100);
+  
+  // REMINDER 45 SECOND MARK
+
+  // forwards and intake 19/20/21 (stack)
+  // intake = 127;
+  // cata  = -127;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(49, 40);
+  chassis.wait_drive();
+
+  intake = 0;
+  cata  = 0;
+
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(14, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // turn to goal
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(0, TURN_SPEED);
+  chassis.wait_drive();
+
+  // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(3, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  // shoot
+  // skills_shoot();
+
+
+    // forwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(5, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  //   // forwards
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(-5, DRIVE_SPEED);
+  // chassis.wait_drive();
+
+  // // swing turn to 22/23/24 (separated)
+  // chassis.set_mode(ez::SWING);
+  // chassis.set_swing_pid(ez::LEFT_SWING, 90, SWING_SPEED);
+  // chassis.wait_drive();
+
+  // turn to goal
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(76, TURN_SPEED);
+  chassis.wait_drive();
+
+  reset_cata = false;
+  cata_auto_reset = false;
+
+  pros::delay(100);
+
+  // // REMINDER 50 SECOND MARK
+
+  // forwards and intake 22/23/24 (separated)
+  // intake = 127;
+  // cata  = -127;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(29, 65, true);
+  chassis.wait_drive();
+
+  // backwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-20, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  intake = 0;
+  cata  = 0;
+
+  // swing turn to goal 
+  chassis.set_mode(ez::SWING);
+  chassis.set_swing_pid(ez::LEFT_SWING, 0, SWING_SPEED);
+  chassis.wait_drive();
+
+  // shoot
+  // cata = 120;
+  // intake = -120;
+  // pros::delay(500);
+  //   cata = 0;
+  // intake = 0;
+
+
+  // REMINDER 55 SECOND MARK
+
+  // turn to expansion spot
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-7, TURN_SPEED);
+  chassis.wait_drive();
+
+  // backwards to expansion spot
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-50, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  reset_cata = false;
+  cata_auto_reset = false;
+
+  // turn to expand
   chassis.set_mode(ez::TURN);
   chassis.set_turn_pid(45, TURN_SPEED);
   chassis.wait_drive();
 
-  reset_cata = false;
-
-
- // go fowards, intake next separated 3
-    chassis.set_drive_pid(15, DRIVE_SPEED);
-  chassis.wait_drive();
-  pros::delay(500);
-  reset_cata = false;
-  cata_auto_reset = false;
-  // turn intake on
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake = 127;
-  cata  = -127;
-
-chassis.set_mode(ez::DISABLE);
-
-  chassis.set_tank(40, 40);
-  pros::delay(3000);
-  chassis.set_tank(0, 0);
-  pros::delay(500);
-
-
-   intake = 0;
-  cata  = 0;
-
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-
-
-  // turn to goal and shoot
-
-    chassis.set_mode(ez::TURN);
-  chassis.set_turn_pid(175, TURN_SPEED);
-  chassis.wait_drive();
-
-  chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(26.25, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  cata_auto_reset = true;
-  shooting_cata = true;
-  pros::delay(500); // shoot here
-  shooting_cata = false;
-  reset_cata = true;
-
-
-  pros::delay(1000); // shoot here
-
-  // go  back and head towards roller
-  chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-26.25, DRIVE_SPEED);
-  chassis.wait_drive();
-
-
-  chassis.set_mode(ez::TURN);
-  chassis.set_turn_pid(25, TURN_SPEED);
-  chassis.wait_drive();
-
-  cata_auto_reset = false;
-  reset_cata = false;
-
-  chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(18, DRIVE_SPEED);
-  chassis.wait_drive();
-
-    chassis.set_mode(ez::TURN);
-  chassis.set_turn_pid(-90, TURN_SPEED);
-  chassis.wait_drive();
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-10, DRIVE_SPEED);
-  chassis.wait_drive();
-
-
-
-//   // GET 1ST ROLLER
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake = 127;
-  cata  = -127;
-
-chassis.set_mode(ez::DISABLE);
-
-  chassis.set_tank(-25, -25);
-  pros::delay(800);
-  chassis.set_tank(0, 0);
-
-   intake = 0;
-  cata  = 0;
-
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-
-
-  // get triple stack in front of roller
-
-  chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(13, DRIVE_SPEED);
-  chassis.wait_drive();
-
-     cata.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake = 127;
-  cata  = -127;
-
-chassis.set_mode(ez::DISABLE);
-
-  chassis.set_tank(20, 20);
-  pros::delay(3000);
-  chassis.set_tank(0, 0);
-  pros::delay(500);
-
-   intake = 0;
-  cata  = 0;
-
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-
-
-  // head towards second roller
-
-  chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-10, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  chassis.set_mode(ez::TURN);
-  chassis.set_turn_pid(180, TURN_SPEED);
-  chassis.wait_drive();
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-27, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  // get second roller
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-  intake = 127;
-  cata  = -127;
-
-chassis.set_mode(ez::DISABLE);
-
-  chassis.set_tank(-25, -25);
-  pros::delay(1000);
-  chassis.set_tank(0, 0);
-
-   intake = 0;
-  cata  = 0;
-
-    cata.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-  intake.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-
-
-  // go to shoot 
-  chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(10, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  chassis.set_mode(ez::TURN);
-  chassis.set_turn_pid(-90, TURN_SPEED);
-  chassis.wait_drive();
-
-
-
-
-
-
-
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(42, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  // shoot
-  cata_auto_reset = true;
-  shooting_cata = true;
-  pros::delay(500); // shoot here
-  shooting_cata = false;
-  reset_cata = true;
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-3.5, DRIVE_SPEED);
-  chassis.wait_drive();
-
-
-  chassis.set_mode(ez::SWING);
-      chassis.set_swing_pid(ez::LEFT_SWING, -180, SWING_SPEED);
-  chassis.wait_drive();
-
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-6, DRIVE_SPEED);
-  chassis.wait_drive();
-
-
-
-
-  // next 3 match  loads
-  pros::delay(2500);
-  reset_cata = false;
-
-     chassis.set_swing_pid(ez::LEFT_SWING, -90, SWING_SPEED);
-  chassis.wait_drive();
-  
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(3, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  cata_auto_reset = true;
-  shooting_cata = true;
-  pros::delay(500); // shoot here
-  shooting_cata = false;
-  reset_cata = true;
-
-  chassis.set_mode(ez::SWING);
-        chassis.set_swing_pid(ez::LEFT_SWING, -180, SWING_SPEED);
-  chassis.wait_drive();
-
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-6, DRIVE_SPEED);
-  chassis.wait_drive();
-
-
-
-
-  // next 3 match loads
-  pros::delay(2000);
-  reset_cata = false;
-
-
-  chassis.set_mode(ez::SWING);
-     chassis.set_swing_pid(ez::LEFT_SWING, -95, SWING_SPEED);
-  chassis.wait_drive();
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(3.5, DRIVE_SPEED);
-  chassis.wait_drive();
-
-  cata_auto_reset = true;
-  shooting_cata = true;
-  pros::delay(500); // shoot here
-  shooting_cata = false;
-  reset_cata = true;
-
-
-  chassis.set_mode(ez::TURN);
-  chassis.set_turn_pid(-85, TURN_SPEED);
-  chassis.wait_drive();
-
-    chassis.set_mode(ez::DRIVE);
-  chassis.set_drive_pid(-51, DRIVE_SPEED);
-  chassis.wait_drive();
-
-    chassis.set_mode(ez::TURN);
-  chassis.set_turn_pid(-135, TURN_SPEED);
-  chassis.wait_drive();
+  // expand
+  expansion_solenoid.set_value(true);
+  // REMINDER DONE
 
 
 }
+
+
+
+
+
+
+
 
 
 
 void right_elims() {
 
+  // // forwards to disc
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(31, DRIVE_SPEED, true);
+  // chassis.wait_drive();
+
+  // // forwards and intake 
+  // intake = 127;
+  // cata  = -127;
+
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(15, 30, true);
+  // chassis.wait_drive();
+
+  // // turn to shoot
+  // acute_turn_constants();
+  // chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(44, TURN_SPEED);
+  // chassis.wait_drive();
+
+
+  // intake = 0;
+  // cata  = 0;
+
+  // // shoot
+  // cata_auto_reset = true;
+  // shooting_cata = true;
+  // pros::delay(500); // shoot here
+  // shooting_cata = false;
+  // reset_cata = true;
+
+  // // turn to discs
+  // turn_90_constants();
+  // chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(-130, TURN_SPEED);
+  // chassis.wait_drive();
+
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(5.5, DRIVE_SPEED, true);
+  // chassis.wait_drive();
+
+  // chassis.set_mode(ez::SWING);
+  // chassis.set_swing_pid(ez::RIGHT_SWING, -177, SWING_SPEED);
+  // chassis.wait_drive();
+
+  // reset_cata = false;
+  // cata_auto_reset = false; 
+
+
+  // // forwards and intake discs
+
+  // intake = 127;
+  // cata  = -127;
+
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(36, 40, true);
+  // chassis.wait_drive();
+
+  // // turn
+  // acute_turn_constants();
+  // chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(-177, TURN_SPEED);
+  // chassis.wait_drive();
+
+  // // go back
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(-41, DRIVE_SPEED, true);
+  // chassis.wait_drive();
+
+  // intake = 0;
+  // cata  = 0;
+
+  // // turn to goal
+  // chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(46, TURN_SPEED);
+  // chassis.wait_drive();
+
+  // // shoot
+  // cata_auto_reset = true;
+  // shooting_cata = true;
+  // pros::delay(500); // shoot here
+  // shooting_cata = false;
+  // reset_cata = true;
+
+  // // turn towards separated discs
+  // chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(130, TURN_SPEED);
+  // chassis.wait_drive();
+
+  // pros::delay(300);
+
+  // reset_cata = false;
+  // cata_auto_reset = false; 
+
+  // // forwards and intake separated discs
+  // intake = 127;
+  // cata  = -127;
+
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(30, 55, true);
+  // chassis.wait_drive();
+
+  // // forwards to roller
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(35, DRIVE_SPEED, true);
+  // chassis.wait_drive();
+
+ 
+
+  // // turn to roller
+  // chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(0, TURN_SPEED);
+  // chassis.wait_drive();
+
+  // intake = 0;
+  // cata  = 0;
+
+  // // backwards to roller
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(-10, DRIVE_SPEED, true);
+  // chassis.wait_drive();
+
+  // score_roller_match();
+
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(3, DRIVE_SPEED);
+  // chassis.wait_drive();
+
+  // acute_turn_constants();
+  // chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(11, TURN_SPEED);
+  // chassis.wait_drive();
+
+  // cata_auto_reset = true;
+  // shooting_cata = true;
+  // pros::delay(300); // shoot here
+  // shooting_cata = false;
+  // reset_cata = true;
+
+
+
+
+
+  // NEW AUTO
+
+// auto_reset_task.suspend();
+// cata_auto_reset = false;
+// reset_cata = false;
+//   // turn 
+//    chassis.set_mode(ez::TURN);
+//   chassis.set_turn_pid(20, TURN_SPEED);
+//   chassis.wait_drive();
+
+//     // reset
+//   while ((cata_limit.get_value() == 0)) {
+//       cata = (70);
+//       intake = (-70);	
+//       pros::delay(50);
+//   }
+//     while ((cata_limit.get_value() == 1)) {
+//           cata = (100);
+//         intake = (-100);	
+//       pros::delay(50);
+//   }
+//     cata =(0);
+//   intake = (0);
+//   pros::delay(500);
+
+
+//   auto_reset_task.resume();
+//   cata_auto_reset = true;
+
+
+  
+
+  shooting_cata = false;
+
+  // // shoot 
+  // while ((cata_limit.get_value() == 0)) {
+  //         cata = (70);
+  //       intake = (-70);	
+  //     pros::delay(50);
+  // }
+  //   while ((cata_limit.get_value() == 1)) {
+  //         cata = (100);
+  //       intake = (-100);	
+  //     pros::delay(50);
+  // }
+  //   cata =(0);
+  // intake = (0);
+  // pros::delay(500);
+
+
+  // auto_reset_task.resume();
+  // cata_auto_reset = true;
+
+
+
+     
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-90, TURN_SPEED);
+  chassis.wait_drive();
+
+  // backwards to roller
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-18, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+
+  // turn right 
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(0, TURN_SPEED);
+  chassis.wait_drive();
+
+
+// REMINDER
+cata_auto_reset = false;
+auto_reset_task.suspend();
+
+
+  // go backwards
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-6, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // get roller
+  score_roller_match();
+
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(6, DRIVE_SPEED, true);
+  // chassis.wait_drive();
+
+  //   chassis.set_mode(ez::TURN);
+  // chassis.set_turn_pid(0, TURN_SPEED);
+  // chassis.wait_drive();
+
+//   // forwards
+//   chassis.set_mode(ez::DRIVE);
+//   chassis.set_drive_pid(6, DRIVE_SPEED, true);
+//   chassis.wait_drive();
+
+
+//   // turn to separated 
+//   chassis.set_mode(ez::TURN);
+//   chassis.set_turn_pid(-45, TURN_SPEED);
+//   chassis.wait_drive();
+
+//   // // forwads
+//   // chassis.set_mode(ez::DRIVE);
+//   // chassis.set_drive_pid(15, DRIVE_SPEED, true);
+//   // chassis.wait_drive();
+
+
+//   // forwards and intake
+//   intake = 127;
+//   cata  = -127;
+
+//   chassis.set_mode(ez::DRIVE);
+//   chassis.set_drive_pid(65, 55, true);
+//   chassis.wait_drive();
+
+//   chassis.set_mode(ez::DRIVE);
+//   chassis.set_drive_pid(-15, DRIVE_SPEED);
+//   chassis.wait_drive();
+
+//   // turn to goal
+//   chassis.set_mode(ez::TURN);
+//   chassis.set_turn_pid(40, TURN_SPEED);
+//   chassis.wait_drive();
+
+ 
+
+//   intake = 0;
+//   cata  = 0;
+
+//   pros::delay(100);
+
+//   // shoot 
+
+// cata_auto_reset = false;
+// auto_reset_task.suspend();
+
+//   // reset
+//   while ((cata_limit.get_value() == 0)) {
+//           cata = (70);
+//         intake = (-70);	
+//       pros::delay(50);
+//   }
+//     while ((cata_limit.get_value() == 1)) {
+//           cata = (100);
+//         intake = (-100);	
+//       pros::delay(50);
+//   }
+//     cata =(0);
+//   intake = (0);
+//   pros::delay(500);
+
+
+//   auto_reset_task.resume();
+//   cata_auto_reset = true;
+
+
+
+//   // turn to low goal 
+//   chassis.set_mode(ez::TURN);
+//   chassis.set_turn_pid(-140, TURN_SPEED);
+//   chassis.wait_drive();
+
+//   chassis.set_mode(ez::DRIVE);
+//   chassis.set_drive_pid(16, DRIVE_SPEED, true);
+//   chassis.wait_drive();
+
+//   chassis.set_mode(ez::SWING);
+//   chassis.set_swing_pid(ez::RIGHT_SWING, -175, SWING_SPEED);
+//   chassis.wait_drive();
+
+//   reset_cata = false;
+// auto_reset_task.suspend();
+
+//   pros::delay(100);
+
+//   // forwards
+//     intake = 127;
+//   cata  = -127;
+
+//   chassis.set_mode(ez::DRIVE);
+//   chassis.set_drive_pid(33, 35, true);
+//   chassis.wait_drive();
+
+//   // forwards and intake 
+
+
+
+//   // turn 
+//   chassis.set_mode(ez::TURN);
+//   chassis.set_turn_pid(-130, TURN_SPEED);
+//   chassis.wait_drive();
+
+//   chassis.set_mode(ez::DRIVE);
+//   chassis.set_drive_pid(-38, DRIVE_SPEED, true);
+//   chassis.wait_drive();
+
+//   chassis.set_mode(ez::TURN);
+//   chassis.set_turn_pid(22, TURN_SPEED);
+//   chassis.wait_drive();
+
+//  // shoot
+
+//   // while ((cata_limit.get_value() == 0)) {
+//   //         cata = (70);
+//   //       intake = (-70);	
+//   //     pros::delay(50);
+//   // }
+//   //   while ((cata_limit.get_value() == 1)) {
+//   //         cata = (100);
+//   //       intake = (-100);	
+//   //     pros::delay(50);
+//   // }
+//     cata =(127);
+//   intake = (-127);
+//   pros::delay(1000);
+//     cata =(0);
+//   intake = (0);
+
+  // auto_reset_task.resume();
+  // cata_auto_reset = true;
+
+
+
+
+
+
+
+
+
+
+  // // backwards 
+  // chassis.set_mode(ez::DRIVE);
+  // chassis.set_drive_pid(-40, DRIVE_SPEED, true);
+  // chassis.wait_drive();
+
+  // intake = 0;
+  // cata  = 0;
+
+  // // // turn to goal 
+  // // chassis.set_mode(ez::TURN);
+  // // chassis.set_turn_pid(90, TURN_SPEED);
+  // // chassis.wait_drive();
+
+  // // // shoot
+  // // cata_auto_reset = true;
+  // // shooting_cata = true;
+  // // pros::delay(400); // shoot here
+  // // shooting_cata = false;
+  // // reset_cata = true;
+
 }
+
+
+
+
+
+
+
+
+
 
 void left_elims() {
 
+  score_roller_match();
+
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(4, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-14, TURN_SPEED);
+  chassis.wait_drive();
+
+
+  // shoot
+  cata_auto_reset = true;
+  shooting_cata = true;
+  pros::delay(400); // shoot here
+  shooting_cata = false;
+  reset_cata = true;
+
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(0, TURN_SPEED);
+  chassis.wait_drive();
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(3, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(50, TURN_SPEED);
+  chassis.wait_drive();
+
+  cata_auto_reset = false;
+  reset_cata = false;
+  
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(18, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // intake stack
+    intake = 127;
+  cata  = -127;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(27, 30);
+  chassis.wait_drive();
+
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-31, TURN_SPEED);
+  chassis.wait_drive();
+
+      intake = 0;
+  cata  = 0;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(6, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // shoot
+  cata_auto_reset = true;
+  shooting_cata = true;
+  pros::delay(400); // shoot here
+  shooting_cata = false;
+  reset_cata = true;
+
+  turn_90_constants();
+     chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(90, TURN_SPEED);
+  chassis.wait_drive();
+
+  
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(13, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  chassis.set_mode(ez::SWING);
+  chassis.set_swing_pid(ez::LEFT_SWING, 177, SWING_SPEED);
+  chassis.wait_drive();
+
+  cata_auto_reset = false;
+  reset_cata = false;
+
+  intake = 127;
+  cata  = -127;
+
+  pros::delay(100);
+
+    chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(30, 25, true);
+  chassis.wait_drive();
+
+  // turn
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(160, TURN_SPEED);
+  chassis.wait_drive();
+
+  intake = 0;
+  cata  = 0;
+
+  // go back
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-41, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // turn to goal
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-35, TURN_SPEED);
+  chassis.wait_drive();
+
+  // shoot
+  cata_auto_reset = true;
+  shooting_cata = true;
+  pros::delay(400); // shoot here
+  shooting_cata = false;
+  reset_cata = true;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void solo_WP() {
 
+
+  score_roller_match();
+
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(4, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-14, TURN_SPEED);
+  chassis.wait_drive();
+
+
+  // shoot
+auto_reset_task.suspend();
+  cata = 120;
+  intake = -120;
+  pros::delay(600);
+    reset_cata = true;
+auto_reset_task.resume();
+
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(0, TURN_SPEED);
+  chassis.wait_drive();
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(3, DRIVE_SPEED);
+  chassis.wait_drive();
+
+
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(50, TURN_SPEED);
+  chassis.wait_drive();
+
+ 
+
+  
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(18, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  
+
+  cata_auto_reset = false;
+  reset_cata = false;
+
+
+  // intake stack
+    intake = 127;
+  cata  = -127;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(27, 30);
+  chassis.wait_drive();
+
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-31, TURN_SPEED);
+  chassis.wait_drive();
+
+      intake = 0;
+  cata  = 0;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(6, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // shoot
+auto_reset_task.suspend();
+  cata = 120;
+  intake = -120;
+  pros::delay(600);
+    reset_cata = true;
+auto_reset_task.resume();
+
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-5, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  acute_turn_constants();
+  chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(45, TURN_SPEED);
+  chassis.wait_drive();
+
+  pros::delay(100);
+
+  cata_auto_reset = false;
+  reset_cata = false;
+
+
+  intake = 127;
+  cata  = -127;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(50, 40, true);
+  chassis.wait_drive();
+
+    chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-65, TURN_SPEED);
+  chassis.wait_drive();
+  
+      intake = 0;
+  cata  = 0;
+
+    chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(5, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+  // shoot
+auto_reset_task.suspend();
+  cata = 120;
+  intake = -120;
+  pros::delay(600);
+    reset_cata = true;
+auto_reset_task.resume();
+
+
+      chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-5, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+   chassis.set_mode(ez::TURN);
+  chassis.set_turn_pid(-135, TURN_SPEED);
+  chassis.wait_drive();
+
+    chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-25, DRIVE_SPEED, true);
+  chassis.wait_drive();
+
+
+
+  chassis.set_mode(ez::SWING);
+  chassis.set_swing_pid(ez::RIGHT_SWING, -90, SWING_SPEED);
+  chassis.wait_drive();
+  
+    cata_auto_reset = false;
+  reset_cata = false;
+
+  chassis.set_mode(ez::DRIVE);
+  chassis.set_drive_pid(-2, DRIVE_SPEED);
+  chassis.wait_drive();
+
+  score_roller_match();
+
+  
 }
+
+
+
+
+
+
 
 
 // REMINDER - ddlist things
@@ -766,7 +1818,6 @@ static lv_res_t ddlist_action(lv_obj_t * ddlist)
 uint8_t id = lv_obj_get_free_num(ddlist);
 char sel_str[32];
 lv_ddlist_get_selected_str(ddlist, sel_str);
-printf("Ddlist %d new option: %s \n", id, sel_str);
 
    uint32_t sel = lv_ddlist_get_selected(ddlist);
    
@@ -786,7 +1837,6 @@ std::string autoDesc = "- x volleys\n - x rollers \n - x tile expansion";
 static lv_res_t btn_click_action(lv_obj_t * btn)
 {
 uint8_t id = lv_obj_get_free_num(btn);
-printf("Button %d is released\n", id);
 /* The button is released.
 * Make something here */
 
@@ -803,8 +1853,8 @@ switch (id) {
     break;
   case 3:
     autoCounter = 3;
-    autoName = "Left Side Elims";
-    autoDesc = "- left roller \n - x volleys";
+    autoName = "NEW SKILLS NEW SKILLS";
+    autoDesc = "THIS ONE IS SKILLS";
     break;
   case 4:
     autoCounter = 4;
@@ -825,8 +1875,7 @@ return LV_RES_OK; /*Return OK if the button is not deleted*/
 // motor dashboard list click action,  doesn't  really do anything, doesn't need to
 static lv_res_t list_release_action(lv_obj_t * list_btn)
 {
-printf("List element click:%s\n", lv_list_get_btn_text(list_btn));
-return LV_RES_OK; /*Return OK because the list is not deleted*/
+  return LV_RES_OK; /*Return OK because the list is not deleted*/
 }
 
 
@@ -1111,7 +2160,6 @@ std::string temperature = "hello";
 static lv_res_t btn_click_motors(lv_obj_t * btn)
 {
 uint8_t id = lv_obj_get_free_num(btn);
-printf("Button %d is released\n", id);
 /* The button is released.
 * Make something here */
 
@@ -1151,13 +2199,10 @@ return LV_RES_OK; /*Return OK if the button is not deleted*/
  * to keep execution time for this mode under a few seconds.
  */
 void initialize() {
-//     lv_obj_t* obj = lv_obj_create(lv_scr_act(), NULL);
-// lv_obj_set_size(obj, 480, 240);
-// // lv_obj_set_style(obj, &lv_style_transp); // make the container invisible
-// lv_obj_align(obj, NULL, LV_ALIGN_CENTER, 0, 0);
 
-  // Print our branding over your terminal :D
-  // ez::print_ez_template();
+band_release.set_value(true);
+
+
   motorMap.insert(std::make_pair("cata", cata));
 	motorMap.insert(std::make_pair("intake", intake));
 	motorMap.insert(std::make_pair("driveFR", driveFR));
@@ -1168,30 +2213,15 @@ void initialize() {
 	motorMap.insert(std::make_pair("driveBL", driveBL));
 
 
-  
   pros::delay(500); // Stop the user from doing anything while legacy ports configure.
 
   // Configure your chassis controls
   chassis.toggle_modify_curve_with_controller(true); // Enables modifying the controller curve with buttons on the joysticks
   chassis.set_active_brake(0.1); // Sets the active brake kP. We recommend 0.1.
   chassis.set_curve_default(0, 0); // Defaults for curve. If using tank, only the first parameter is used. (Comment this line out if you have an SD card!)  
-  default_constants(); // Set the drive to your own constants from autons.cpp!
+  acute_turn_constants(); // Set the drive to your own constants from autons.cpp!
   exit_condition_defaults(); // Set the exit conditions to your own constants from autons.cpp!
 
-  // These are already defaulted to these buttons, but you can change the left/right curve buttons here!
-  // chassis.set_left_curve_buttons (pros::E_CONTROLLER_DIGITAL_LEFT, pros::E_CONTROLLER_DIGITAL_RIGHT); // If using tank, only the left side is used. 
-  // chassis.set_right_curve_buttons(pros::E_CONTROLLER_DIGITAL_Y,    pros::E_CONTROLLER_DIGITAL_A);
-
-  // // Autonomous Selector using LLEMU
-  // ez::as::auton_selector.add_autons({
-  //   Auton("Example Drive\n\nDrive forward and come back.", drive_example),
-  //   Auton("Example Turn\n\nTurn 3 times.", turn_example),
-  //   Auton("Drive and Turn\n\nDrive forward, turn, come back. ", drive_and_turn),
-  //   Auton("Drive and Turn\n\nSlow down during drive.", wait_until_change_speed),
-  //   Auton("Swing Example\n\nSwing, drive, swing.", swing_example),
-  //   Auton("Combine all 3 movements", combining_movements),
-  //   Auton("Interference\n\nAfter driving forward, robot performs differently if interfered or not.", interfered_example),
-  // });
 
   // Initialize chassis and auton selector
   chassis.initialize(true);
@@ -1241,7 +2271,7 @@ void competition_initialize() {
 // gif.clean();
 
 
-
+band_release.set_value(true);
 
 // HOME PAGE
 
@@ -1963,7 +2993,36 @@ lv_obj_align(visionBoxLabel5, boxVisionContainer, LV_ALIGN_IN_BOTTOM_RIGHT, -20,
 
 
 
+
+
+
+
+
+
+
+    inertial.reset();
+    while (inertial.is_calibrating()) {
+      pros::delay(40);
+    }
+
+
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1979,6 +3038,8 @@ lv_obj_align(visionBoxLabel5, boxVisionContainer, LV_ALIGN_IN_BOTTOM_RIGHT, -20,
  * from where it left off.
  */
 void autonomous() {
+
+
   chassis.reset_pid_targets(); // Resets PID targets to 0
   chassis.reset_gyro(); // Reset gyro position to 0
   chassis.reset_drive_sensor(); // Reset drive sensors to 0
@@ -1988,13 +3049,18 @@ void autonomous() {
 
   switch (autoCounter) {
     case 1:
-      skills();
+      // skills();
+      right_elims();
+      // solo_WP();
+      // left_elims();
+
       break;
     case 2:
       right_elims();
       break;
     case 3:
-      left_elims();
+      // left_elims();
+      skills();
       break;
     case 4: 
       solo_WP();
@@ -2003,13 +3069,15 @@ void autonomous() {
       break;
   }
 
-
-
 }
 
 
 
 
+// opcontrol variables
+bool cata_jammed = false;
+int anti_counter = 0;
+int boost_counter = 0;
 
 /**
  * Runs the operator control code. This function will be started in its own task
@@ -2026,41 +3094,46 @@ void autonomous() {
  */
 
 
-
-bool cata_jammed = false;
-
 void opcontrol() {
-  // This is preference to what you like to drive on.
-  // chassis.set_drive_brake(MOTOR_BRAKE_COAST);
 
 
+
+  // driver configs
+  // anti_boost_solenoid.set_value(true);
+
+
+  band_release.set_value(false);
+  expansion_solenoid.set_value(false);
+  // REMINDER OEIRWJGHOWNRIOGWOGWLRNGJKJWKRGWLKRNGLKWRNGLKWNRLGKNWRKGNLWNRGKLWNRG
+  // REMINDER WEBNGLJQWENFLWNLFENKJADFJS KFDHNJKML
+  // boosting_solenoid.set_value(false);
+  
+
+  chassis.set_drive_brake(MOTOR_BRAKE_COAST);
 
   auto_reset_task.suspend();
-  // auto_reset_task.remove();
+  auto_reset_task.remove();
+
+
+
 
 
   cata_auto_reset = false;
   shooting_cata = false;
   reset_cata = false;
   
-  
-
   cata_task_on = true;
 
 
+  cata.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+  intake.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+
   // DISCONNECT DETECTING TASK
-	pros::Task disconnect_detection_task (disconnect_detection, (void*)"PROS", TASK_PRIORITY_DEFAULT, TASK_STACK_DEPTH_DEFAULT, "Detect Disconnect");
+	// pros::Task disconnect_detection_task (disconnect_detection, (void*)"PROS", TASK_PRIORITY_DEFAULT, TASK_STACK_DEPTH_DEFAULT, "Detect Disconnect");
 	pros::Task cata_driver (cata_task, (void*)"PROS", TASK_PRIORITY_DEFAULT, TASK_STACK_DEPTH_DEFAULT, "Cata resetting");
 
 
-
-
   while (true) {
-
-    // chassis.tank(); // Tank control
-    // chassis.arcade_standard(ez::SINGLE); // Standard single arcade
-    // chassis.arcade_flipped(ez::SPLIT); // Flipped split arcade
-    // chassis.arcade_flipped(ez::SINGLE); // Flipped single arcade
 
 
 
@@ -2079,8 +3152,6 @@ void opcontrol() {
 
   } else {
     cata_task_on = true;
-    //     intake = 0;
-    // cata = 0;
   }
 
   if (master.get_digital(pros::E_CONTROLLER_DIGITAL_L1) && cata_jammed) {
@@ -2097,21 +3168,54 @@ void opcontrol() {
 		if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R2) && master.get_digital(pros::E_CONTROLLER_DIGITAL_UP)) {
 			expansion_solenoid.set_value(true);
 		}
+
+
+
+    // manual anti boost control (doesn't seem to work?)
+    if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R2) && master.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT)) {
+			if (anti_counter == 0) {
+            anti_counter = 1;
+            anti_boost_solenoid.set_value(false);
+      }
+      if (anti_counter == 1) {
+            anti_counter = 0;
+            anti_boost_solenoid.set_value(true);
+      }
+      
+		}
+
+
+
+    // manual boost control (doesn't seem to work?)
+    if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R2) && master.get_digital(pros::E_CONTROLLER_DIGITAL_Y)) {
+				
+      if (boost_counter == 0) {
+        boost_counter = 1;
+        band_release.set_value(true);
+      }
+    
+      if (boost_counter == 1) {
+        boost_counter = 0;
+        band_release.set_value(false);
+      }
+
+		}
+    
     
 
-    
-
-
-      		double fowardsInput = master.get_analog(ANALOG_LEFT_Y);
+    double fowardsInput = master.get_analog(ANALOG_LEFT_Y);
 		double turnInput = master.get_analog(ANALOG_RIGHT_X); 
 
 		double left = fowardsInput + turnInput;
 		double right = fowardsInput - turnInput;
 
 		chassis.set_tank(left, right);
-
+  
 
   
     pros::delay(20);
   }
+
+
+
 }
